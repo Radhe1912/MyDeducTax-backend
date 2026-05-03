@@ -1,11 +1,27 @@
 from fastapi import FastAPI
-from app.core.config import settings
-from app.api.router import api_router
+from contextlib import asynccontextmanager
 
-app = FastAPI(title=settings.PROJECT_NAME)
+from app.api.router import router as api_router
+from app.core.logging import setup_logging
+from app.db.init_db import init_db
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    print("🚀 Starting MyDeducTax backend...")
+    await init_db()
+    print("✅ Database initialized")
+    yield
+    print("🛑 Shutting down...")
+
+app = FastAPI(
+    title="MyDeducTax API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.include_router(api_router, prefix="/api")
 
 @app.get("/")
-def root():
-    return {"message": "Welcome to MyDeducTax API"}
+async def root():
+    return {"message": "MyDeducTax API is running"}

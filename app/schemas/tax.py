@@ -1,11 +1,22 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+from app.schemas.expense import ExpenseCreate
+from app.schemas.deduction import DeductionSummary
 
-class TaxCalculationRequest(BaseModel):
-    user_id: int
+class TaxCalculationInput(BaseModel):
     income: float
-    year: int
+    expenses: List[ExpenseCreate]
+
+class TaxResult(BaseModel):
+    income: float
+    taxable_income: float
+    total_deduction: float
+    tax_payable: float
 
 class TaxCalculationResponse(BaseModel):
-    total_tax: float
-    effective_rate: float
+    tax: TaxResult
+    deductions: DeductionSummary
+    hra_received: Optional[float] = 0
+    is_metro: Optional[bool] = True
+    is_senior_self: Optional[bool] = False
+    is_senior_parents: Optional[bool] = False

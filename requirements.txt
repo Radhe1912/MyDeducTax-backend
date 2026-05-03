@@ -8,3 +8,5 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
 pytest
+email-validator
+pandas

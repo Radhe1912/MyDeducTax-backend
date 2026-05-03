@@ -1,17 +1,40 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict
+from datetime import datetime
+from uuid import UUID
 
 class ExpenseBase(BaseModel):
-    amount: float
-    category: str
     description: Optional[str] = None
+    amount: float = Field(..., gt=0)
+    transaction_date: Optional[datetime] = None
 
-class ExpenseCreate(ExpenseBase):
-    pass
+class ExpenseCreate(BaseModel):
+    description: str
+    amount: float
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
 
-class ExpenseResponse(ExpenseBase):
-    id: int
-    user_id: int
+
+class ExpenseOut(BaseModel):
+    id: UUID
+    description: str
+    amount: float
+    category: Optional[str]
+    sub_category: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class ExpenseBulkCreate(BaseModel):
+    expenses: List[ExpenseBase]
+
+class ExpenseResponse(BaseModel):
+    id: UUID
+    description: Optional[str]
+    amount: float
+    category: Optional[str]
+    sub_category: Optional[str]
+    transaction_date: Optional[datetime]
 
     class Config:
         from_attributes = True

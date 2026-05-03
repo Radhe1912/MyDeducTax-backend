@@ -1,18 +1,16 @@
-from sqlalchemy.orm import Session
-from app.crud.base import CRUDBase
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
 from app.models.user import User
-from app.schemas.user import UserCreate
-from app.core.security import get_password_hash
+from app.crud.base import CRUDBase
 
-class CRUDUser(CRUDBase[User, UserCreate, UserCreate]):
-    def create(self, db: Session, *, obj_in: UserCreate) -> User:
-        db_obj = User(
-            email=obj_in.email,
-            hashed_password=get_password_hash(obj_in.password),
+
+class CRUDUser(CRUDBase[User]):
+    async def get_by_email(self, db: AsyncSession, email: str):
+        result = await db.execute(
+            select(User).where(User.email == email)
         )
-        db.add(db_obj)
-        db.commit()
-        db.refresh(db_obj)
-        return db_obj
+        return result.scalar_one_or_none()
 
-user = CRUDUser(User)
+
+user_crud = CRUDUser(User)
