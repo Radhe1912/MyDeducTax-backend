@@ -131,11 +131,33 @@ def _handle_formula(expenses: List[Dict], rules: Dict, context: Dict):
 # MAIN ENGINE (FULLY DYNAMIC)
 # =========================
 
+import logging
+from pydantic import BaseModel, ValidationError
+
+logger = logging.getLogger(__name__)
+
+class SectionRuleSchema(BaseModel):
+    type: str
+    max_limit: float | None = None
+    category: list[str] | None = None
+    formula: str | None = None
+
 async def compute_deductions(expense_map, sections, context={}):
     results = []
     total = 0
 
     for section in sections:
+        # Rule validation
+        if section.rules:
+            try:
+                SectionRuleSchema(**section.rules)
+            except ValidationError as e:
+                logger.error(f"Rule validation failed for section {section.section_code}: {e}")
+                continue # Skip this section to prevent engine crash
+            except Exception as e:
+                logger.error(f"Broken JSON in rules for {section.section_code}: {e}")
+                continue
+
         code = section.section_code
 
         if code not in expense_map:

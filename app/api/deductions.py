@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -22,55 +22,70 @@ async def get_user_expenses(
     return await expense_crud.get_by_user(db, user["user_id"])
 
 
+from app.db.session import AsyncSessionLocal
+import io
+import pandas as pd
+
+async def process_file_background(contents: bytes, filename: str, user_id: str):
+    import logging
+    logger = logging.getLogger(__name__)
+    # Parse file
+    try:
+        if filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents))
+        elif filename.endswith(".xlsx"):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            return
+    except Exception as e:
+        logger.error(f"Failed to parse file {filename}: {e}")
+        return
+    
+    if df.empty:
+        return
+
+    from app.services.csv_parser import transform_df
+    parsed_data = transform_df(df)
+
+    if not parsed_data:
+        return
+
+    enriched = [classify_expense(e) for e in parsed_data]
+
+    async with AsyncSessionLocal() as db:
+        await expense_crud.bulk_insert_transactions(
+            db=db,
+            user_id=user_id,
+            expenses=enriched
+        )
+
 @router.post("/upload-file")
 async def upload_file(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user)
 ):
     filename = file.filename.lower()
 
-    # =========================
-    # VALIDATION
-    # =========================
     if not (filename.endswith(".csv") or filename.endswith(".xlsx")):
         raise HTTPException(
             status_code=400,
             detail="Only CSV or XLSX files are supported"
         )
-
-    # =========================
-    # PARSE FILE
-    # =========================
-    try:
-        parsed_data = await parse_file(file)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"File parsing failed: {str(e)}"
-        )
-
-    if not parsed_data:
-        return {"message": "No valid transactions found"}
-
-    # =========================
-    # CLASSIFY
-    # =========================
-    enriched = [classify_expense(e) for e in parsed_data]
-
-    # =========================
-    # STORE WITH DEDUPLICATION
-    # =========================
-    inserted_count = await expense_crud.bulk_insert_transactions(
-        db=db,
-        user_id=user["user_id"],
-        expenses=enriched
+        
+    contents = await file.read()
+    
+    # Add to background tasks
+    background_tasks.add_task(
+        process_file_background,
+        contents,
+        filename,
+        user["user_id"]
     )
 
     return {
-        "message": "File processed successfully",
-        "transactions_received": len(enriched),
-        "transactions_inserted": inserted_count
+        "message": "File is being processed in the background"
     }
 
 

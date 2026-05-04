@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
@@ -14,16 +14,22 @@ from app.services.tax_calculator import calculate_tax
 from app.services.recommendation import generate_recommendations
 
 from app.models.tax_section import TaxSection
-from app.models.report import Report  # ✅ IMPORTANT
+from app.models.report import TaxResult  # ✅ IMPORTANT
+from app.core.rate_limit import limiter
+from app.core.logging import get_logger
 
 router = APIRouter()
+logger = get_logger("audit")
 
 @router.post("/calculate", response_model=TaxCalculationResponse)
+@limiter.limit("10/minute")
 async def calculate_tax_endpoint(
+    request: Request,
     data: TaxCalculationInput,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    logger.info(f"User {user['user_id']} calculated tax for income {data.income} with {len(data.expenses)} expenses")
     # ======================
     # 1. ENRICH EXPENSES
     # ======================
@@ -60,13 +66,30 @@ async def calculate_tax_endpoint(
     sections_list = engine_result["deductions"]
 
     # ======================
-    # 5. TAX CALCULATION
+    # 5. TAX CALCULATION (BOTH REGIMES)
     # ======================
-    tax_result = calculate_tax(
+    tax_result_new = calculate_tax(
         income=data.income,
         total_deduction=total_deduction,
         regime="new",
     )
+    
+    tax_result_old = calculate_tax(
+        income=data.income,
+        total_deduction=total_deduction,
+        regime="old",
+    )
+
+    # Compare regimes
+    new_tax = tax_result_new["total_tax"]
+    old_tax = tax_result_old["total_tax"]
+    
+    if new_tax < old_tax:
+        recommended = "new"
+        savings = old_tax - new_tax
+    else:
+        recommended = "old"
+        savings = new_tax - old_tax
 
     # ======================
     # 6. RECOMMENDATIONS
@@ -77,12 +100,22 @@ async def calculate_tax_endpoint(
     # FINAL RESPONSE OBJECT
     # ======================
     final_response = {
-        "tax": {
+        "old_regime": {
             "income": data.income,
-            "taxable_income": tax_result["taxable_income"],
+            "taxable_income": tax_result_old["taxable_income"],
             "total_deduction": total_deduction,
-            "tax_payable": tax_result["total_tax"],
+            "tax_payable": old_tax,
+            "regime": "old"
         },
+        "new_regime": {
+            "income": data.income,
+            "taxable_income": tax_result_new["taxable_income"],
+            "total_deduction": total_deduction, # Or 50k standard deduction? handled inside
+            "tax_payable": new_tax,
+            "regime": "new"
+        },
+        "recommended_regime": recommended,
+        "savings": savings,
         "deductions": {
             "sections": sections_list,
             "recommendations": recommendations,
@@ -93,16 +126,17 @@ async def calculate_tax_endpoint(
     # ======================
     # 7. SAVE REPORT (FIXED)
     # ======================
-    report = Report(
+    tax_result_record = TaxResult(
         user_id=user["user_id"],
         income=data.income,
         total_deduction=total_deduction,
-        tax_payable=tax_result["total_tax"],
+        tax_payable=new_tax if recommended == "new" else old_tax,
+        regime=recommended,
         breakdown=json.dumps(final_response["deductions"]),
         created_at=datetime.utcnow()
     )
 
-    db.add(report)
+    db.add(tax_result_record)
     await db.commit()
 
     # ======================

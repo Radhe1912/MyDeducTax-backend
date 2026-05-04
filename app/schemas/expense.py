@@ -10,7 +10,7 @@ class ExpenseBase(BaseModel):
 
 class ExpenseCreate(BaseModel):
     description: str
-    amount: float
+    amount: float = Field(..., gt=0)
     category: Optional[str] = None
     sub_category: Optional[str] = None
 

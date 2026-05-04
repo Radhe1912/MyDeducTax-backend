@@ -6,8 +6,8 @@ from datetime import datetime
 from app.db.base_class import Base
 
 
-class Report(Base):
-    __tablename__ = "reports"
+class TaxResult(Base):
+    __tablename__ = "tax_results"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
@@ -16,6 +16,7 @@ class Report(Base):
     income = Column(Float, nullable=False)
     total_deduction = Column(Float, nullable=False)
     tax_payable = Column(Float, nullable=False)
+    regime = Column(String, nullable=True)
 
     breakdown = Column(Text, nullable=False)  # JSON string
 

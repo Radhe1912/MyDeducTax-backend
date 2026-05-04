@@ -7,7 +7,8 @@ def setup_logging():
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         handlers=[
-            logging.StreamHandler(sys.stdout)
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("audit.log", mode="a", encoding="utf-8")
         ]
     )
 
