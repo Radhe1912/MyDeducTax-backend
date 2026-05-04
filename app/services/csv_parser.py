@@ -1,12 +1,10 @@
 import pandas as pd
 from typing import List, Dict, Optional
-from datetime import datetime
 import re
+from datetime import datetime
+import hashlib
 
 
-# =========================
-# COLUMN ALIASES (extendable)
-# =========================
 COLUMN_ALIASES = {
     "date": ["date", "txn date", "transaction date", "value date"],
     "description": ["description", "narration", "remarks", "details"],
@@ -16,34 +14,29 @@ COLUMN_ALIASES = {
 }
 
 
+# =========================
+# COLUMN NORMALIZATION
+# =========================
 def normalize_columns(columns: List[str]) -> Dict[str, Optional[str]]:
     mapping = {k: None for k in COLUMN_ALIASES}
 
-    lower_cols = [c.lower().strip() for c in columns]
+    for col in columns:
+        col_clean = col.lower().strip()
 
-    for key, aliases in COLUMN_ALIASES.items():
-        for alias in aliases:
-            for col in lower_cols:
-                if alias in col:
-                    mapping[key] = col
-                    break
+        for key, aliases in COLUMN_ALIASES.items():
+            if any(alias in col_clean for alias in aliases):
+                mapping[key] = col
 
     return mapping
 
 
-def parse_amount(row, mapping):
-    if mapping["amount"]:
-        return float(row[mapping["amount"]])
-
-    debit = row.get(mapping["debit"])
-    credit = row.get(mapping["credit"])
-
-    if pd.notna(debit):
-        return -float(debit)
-    if pd.notna(credit):
-        return float(credit)
-
-    return 0.0
+# =========================
+# CLEANERS
+# =========================
+def clean_text(text):
+    if not isinstance(text, str):
+        return ""
+    return re.sub(r"\s+", " ", text.strip())
 
 
 def parse_date(value):
@@ -53,20 +46,36 @@ def parse_date(value):
         return None
 
 
-def clean_text(text):
-    if not isinstance(text, str):
-        return ""
-    return re.sub(r"\s+", " ", text.strip())
+def parse_amount(row, mapping):
+    try:
+        if mapping["amount"]:
+            return float(row[mapping["amount"]])
+
+        debit = row.get(mapping["debit"])
+        credit = row.get(mapping["credit"])
+
+        if pd.notna(debit):
+            return float(debit)
+        if pd.notna(credit):
+            return 0  # skip income
+
+        return 0
+    except:
+        return 0
 
 
 # =========================
-# MAIN PARSER
+# HASH FOR DEDUPLICATION
 # =========================
-def parse_csv(file) -> List[Dict]:
-    df = pd.read_csv(file)
+def generate_txn_hash(description, amount, date):
+    raw = f"{description}-{amount}-{date}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
-    df.columns = [c.lower().strip() for c in df.columns]
 
+# =========================
+# CORE TRANSFORM
+# =========================
+def transform_df(df: pd.DataFrame) -> List[Dict]:
     mapping = normalize_columns(df.columns)
 
     parsed = []
@@ -74,15 +83,42 @@ def parse_csv(file) -> List[Dict]:
     for _, row in df.iterrows():
         amount = parse_amount(row, mapping)
 
-        if amount == 0:
+        if amount <= 0:
             continue
 
+        desc = clean_text(row.get(mapping["description"], ""))
+        date = parse_date(row.get(mapping["date"]))
+
+        txn_hash = generate_txn_hash(desc, amount, date)
+
         parsed.append({
-            "description": clean_text(row.get(mapping["description"], "")),
-            "amount": abs(amount),  # keep positive for deduction logic
-            "transaction_date": parse_date(row.get(mapping["date"])),
+            "description": desc,
+            "amount": float(amount),
+            "transaction_date": date,
+            "txn_hash": txn_hash,
             "raw_data": row.to_dict(),
-            "source": "csv"
+            "source": "upload"
         })
 
     return parsed
+
+
+# =========================
+# ENTRY FUNCTION
+# =========================
+async def parse_file(file) -> List[Dict]:
+    filename = file.filename.lower()
+
+    if filename.endswith(".csv"):
+        df = pd.read_csv(file.file)
+
+    elif filename.endswith(".xlsx"):
+        df = pd.read_excel(file.file)
+
+    else:
+        raise ValueError("Unsupported file format")
+
+    if df.empty:
+        return []
+
+    return transform_df(df)

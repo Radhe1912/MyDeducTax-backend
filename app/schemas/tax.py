@@ -6,6 +6,10 @@ from app.schemas.deduction import DeductionSummary
 class TaxCalculationInput(BaseModel):
     income: float
     expenses: List[ExpenseCreate]
+    hra_received: Optional[float] = 0
+    is_metro: Optional[bool] = True
+    is_senior_self: Optional[bool] = False
+    is_senior_parents: Optional[bool] = False
 
 class TaxResult(BaseModel):
     income: float
@@ -16,7 +20,3 @@ class TaxResult(BaseModel):
 class TaxCalculationResponse(BaseModel):
     tax: TaxResult
     deductions: DeductionSummary
-    hra_received: Optional[float] = 0
-    is_metro: Optional[bool] = True
-    is_senior_self: Optional[bool] = False
-    is_senior_parents: Optional[bool] = False

@@ -8,6 +8,7 @@ from app.models.report import Report
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
+
 @router.get("/history")
 async def get_history(
     db: AsyncSession = Depends(get_db),
@@ -28,7 +29,7 @@ async def get_history(
             "total_deduction": r.total_deduction,
             "tax_payable": r.tax_payable,
             "created_at": r.created_at,
-            "breakdown": json.loads(r.breakdown)
+            "breakdown": json.loads(r.breakdown) if r.breakdown else {}
         }
         for r in reports
     ]

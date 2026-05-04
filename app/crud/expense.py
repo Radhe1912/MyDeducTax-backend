@@ -23,35 +23,34 @@ class CRUDExpense(CRUDBase[Expense]):
         return result.scalars().all()
 
     async def bulk_insert_transactions(self, db, user_id, expenses):
-        hashes = [e["txn_hash"] for e in expenses]
+        inserted = 0
 
-        existing = await db.execute(
-            select(Expense.txn_hash).where(Expense.txn_hash.in_(hashes))
-        )
+        for e in expenses:
+            exists = await db.execute(
+                select(Expense).where(
+                    Expense.user_id == user_id,
+                    Expense.txn_hash == e["txn_hash"]
+                )
+            )
 
-        existing_hashes = set(existing.scalars().all())
+            if exists.scalar():
+                continue
 
-        new_expenses = [e for e in expenses if e["txn_hash"] not in existing_hashes]
-
-        objects = [
-            Expense(
+            obj = Expense(
                 user_id=user_id,
-                description=e.get("description"),
-                amount=e.get("amount"),
-                transaction_date=e.get("transaction_date"),
+                description=e["description"],
+                amount=e["amount"],
                 category=e.get("category"),
                 sub_category=e.get("sub_category"),
-                raw_data=e.get("raw_data"),
-                source=e.get("source", "csv"),
-                txn_hash=e.get("txn_hash") 
+                txn_hash=e["txn_hash"],
+                transaction_date=e["transaction_date"]
             )
-            for e in new_expenses
-        ]
 
-        db.add_all(objects)
+            db.add(obj)
+            inserted += 1
+
         await db.commit()
-
-        return objects
+        return inserted
 
     async def get_for_deduction(
         self,

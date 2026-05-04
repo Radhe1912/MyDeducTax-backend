@@ -4,3 +4,4 @@ from app.models.user import User  # noqa
 from app.models.expense import Expense  # noqa
 from app.models.tax_section import TaxSection  # noqa
 from app.models.deduction_log import DeductionLog  # noqa
+from app.models.report import Report

@@ -131,46 +131,69 @@ def _handle_formula(expenses: List[Dict], rules: Dict, context: Dict):
 # MAIN ENGINE (FULLY DYNAMIC)
 # =========================
 
-async def compute_deductions(
-    expense_section_map: Dict[str, List[Dict]],
-    sections,
-    context: Dict = {}
-) -> List[Dict]:
-
+async def compute_deductions(expense_map, sections, context={}):
     results = []
+    total = 0
 
     for section in sections:
-        rules = section.rules or {}
-        section_code = section.section_code
+        code = section.section_code
 
-        expenses = expense_section_map.get(section_code, [])
-
-        if not rules:
+        if code not in expense_map:
             continue
 
-        rule_type = rules.get("type")
+        expenses = expense_map[code]
 
-        if rule_type == "capped":
-            total, allowed, max_limit, filtered = _handle_capped(expenses, rules)
+        # =========================
+        # FORMULA BASED (HRA)
+        # =========================
+        if section.rule_type == "FORMULA":
+            if code == "HRA":
+                rent = sum(e["amount"] for e in expenses)
+                salary = context.get("salary", 0)
+                hra_received = context.get("hra_received", 0)
 
-        elif rule_type == "percentage":
-            total, allowed, max_limit, filtered = _handle_percentage(expenses, rules)
-
-        elif rule_type == "split":
-            total, allowed, max_limit, filtered = _handle_split(expenses, rules, context)
-
-        elif rule_type == "formula":
-            total, allowed, max_limit, filtered = _handle_formula(expenses, rules, context)
+                if salary > 0 and hra_received > 0:
+                    section_total = min(
+                        max(rent - (0.1 * salary), 0),
+                        0.4 * salary,
+                        hra_received
+                    )
+                else:
+                    section_total = 0
+            else:
+                section_total = 0
 
         else:
-            continue
+            # =========================
+            # NORMAL AGGREGATE
+            # =========================
+            raw_total = sum(e["amount"] for e in expenses)
 
-        results.append({
-            "section_code": section_code,
-            "total_claimed": total,
-            "total_allowed": allowed,
-            "remaining_limit": (max_limit - allowed) if max_limit else None,
-            "breakdown": _build_breakdown(filtered, allowed, f"Rule-based ({rule_type})")
-        })
+            if section.max_limit:
+                section_total = min(raw_total, float(section.max_limit))
+                remaining = float(section.max_limit) - section_total
+                limit = float(section.max_limit)
+            else:
+                section_total = raw_total
+                remaining = None
+                limit = None
 
-    return results
+        # =========================
+        # ADD RESULT (ONLY ONCE)
+        # =========================
+        if section_total > 0:
+            results.append({
+                "section": code,
+                "amount": section_total,
+                "count": len(expenses),
+                "limit": limit,
+                "remaining": remaining
+            })
+
+            total += section_total
+
+    return {
+        "total_sections": len(results),
+        "total_deduction": total,
+        "deductions": results
+    }

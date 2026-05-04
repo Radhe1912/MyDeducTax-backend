@@ -14,28 +14,32 @@ CATEGORY_RULES = {
 def normalize_text(text: str) -> str:
     return text.lower().strip() if text else ""
 
+def classify_expense(expense: dict) -> dict:
+    desc = expense.get("description", "").lower()
 
-def classify_expense(expense: Dict) -> Dict:
-    """
-    Input: raw expense dict
-    Output: enriched expense with category + sub_category
-    """
+    if "lic" in desc or "ppf" in desc or "elss" in desc:
+        expense["category"] = "investment"
+        expense["sub_category"] = "80c"
 
-    description = normalize_text(expense.get("description", ""))
+    elif "nps" in desc:
+        expense["category"] = "investment"
+        expense["sub_category"] = "nps"
 
-    category = "other"
+    elif "insurance" in desc:
+        expense["category"] = "insurance"
+        expense["sub_category"] = "80d"
 
-    for cat, patterns in CATEGORY_RULES.items():
-        for pattern in patterns:
-            if re.search(pattern, description):
-                category = cat
-                break
-        if category != "other":
-            break
+    elif "rent" in desc:
+        expense["category"] = "rent"
+        expense["sub_category"] = "hra"
 
-    expense["category"] = category
-    expense["sub_category"] = description[:50] if description else None
-    expense["txn_hash"] = generate_txn_hash(expense)
+    elif "donation" in desc or "ngo" in desc:
+        expense["category"] = "donation"
+        expense["sub_category"] = "80g"
+
+    else:
+        expense["category"] = "other"
+        expense["sub_category"] = "misc"
 
     return expense
 

@@ -10,3 +10,4 @@ python-multipart
 pytest
 email-validator
 pandas
+openpyxl

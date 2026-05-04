@@ -8,7 +8,7 @@ from app.schemas.expense import ExpenseCreate, ExpenseOut
 from sqlalchemy import select, delete
 import uuid
 
-router = APIRouter(prefix="/api/expenses", tags=["Expenses"])
+router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
 
 @router.post("/", response_model=ExpenseOut)
