@@ -214,6 +214,29 @@ async def compute_deductions(expense_map, sections, context={}):
 
             total += section_total
 
+    # =========================
+    # FLAT DEDUCTIONS (80U, 80DD)
+    # =========================
+    if context.get("has_disability"):
+        results.append({
+            "section": "80U",
+            "amount": 75000,
+            "count": 0,
+            "limit": 125000,
+            "remaining": 0
+        })
+        total += 75000
+
+    if context.get("has_dependent_disability"):
+        results.append({
+            "section": "80DD",
+            "amount": 75000,
+            "count": 0,
+            "limit": 125000,
+            "remaining": 0
+        })
+        total += 75000
+
     return {
         "total_sections": len(results),
         "total_deduction": total,

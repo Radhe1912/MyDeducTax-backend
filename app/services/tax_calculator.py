@@ -94,27 +94,44 @@ def apply_surcharge(tax: float, income: float):
 def calculate_tax(
     income: float,
     total_deduction: float,
-    regime: str = "new"
+    regime: str = "new",
+    is_senior_self: bool = False,
+    is_super_senior_self: bool = False,
+    employment_type: str = "salaried",
 ) -> Dict:
     """
-    Production-ready tax calculation.
-
-    Parameters:
-    - income: total income
-    - total_deduction: computed deductions
-    - regime: "old" or "new"
+    Production-ready tax calculation with employment type awareness.
     """
+    from app.services.employment_type import get_employment_rules
+    rules = get_employment_rules(employment_type)
 
     # =========================
     # TAXABLE INCOME
     # =========================
     if regime == "old":
-        taxable_income = max(income - total_deduction, 0)
-        slabs = OLD_REGIME_SLABS
+        std_ded = rules["standard_deduction_old"]
+        taxable_income = max(income - total_deduction - std_ded, 0)
+        
+        # Adjust slabs for seniors
+        if is_super_senior_self:
+            slabs = [
+                (500000, 0.0),
+                (1000000, 0.20),
+                (float("inf"), 0.30),
+            ]
+        elif is_senior_self:
+            slabs = [
+                (300000, 0.0),
+                (500000, 0.05),
+                (1000000, 0.20),
+                (float("inf"), 0.30),
+            ]
+        else:
+            slabs = OLD_REGIME_SLABS
+            
     else:
-        # Standard deduction allowed in new regime (FY 2023-24 onward)
-        STANDARD_DEDUCTION = 50000
-        taxable_income = max(income - STANDARD_DEDUCTION, 0)
+        std_ded = rules["standard_deduction_new"]
+        taxable_income = max(income - std_ded, 0)
         slabs = NEW_REGIME_SLABS
 
     # =========================
